@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -7,7 +8,9 @@ namespace VeeamFileHasher
 {
     public class FileHandler
     {
-        private readonly Dictionary<long, int> bypassDictionary = new Dictionary<long, int>(); // 0 - Init, 1 - Start, 2 Complete, 3 error
+        // 0 - Init, 1 - Start, 2 Complete, 3 error
+        private readonly ConcurrentDictionary<long, int> _bypassDictionary = new ConcurrentDictionary<long, int>(); 
+        
         public void CalcHashForFileBlocks(string filePath, long blockSize)
         {
             try
@@ -28,11 +31,11 @@ namespace VeeamFileHasher
                 long prevBlockPosition = 0;
                 for (var i = 0; i < blockCounts; i++)
                 {
-                    bypassDictionary.Add(i, 0);
+                    _bypassDictionary.TryAdd(i, 0);
                     var countRead = i < blockCounts - 1 ? blockSize : lastBlockSize;
                     if (i < getOptimalThreadsCount)
                     {
-                        var newThread = new Thread( new FileBlockService(bypassDictionary).FileBlockCalcHash);
+                        var newThread = new Thread( new FileBlockService(_bypassDictionary).FileBlockCalcHash);
                         newThread.Start(new FileBlockServiceRequest
                         {
                             BlockNumber = i,
@@ -46,7 +49,7 @@ namespace VeeamFileHasher
                     else
                     {
                         listLazyThreads.Add(new KeyValuePair<Thread, FileBlockServiceRequest>(
-                            new Thread(new FileBlockService(bypassDictionary).FileBlockCalcHash), 
+                            new Thread(new FileBlockService(_bypassDictionary).FileBlockCalcHash), 
                             new FileBlockServiceRequest
                             {
                                 BlockNumber = i,
@@ -70,21 +73,23 @@ namespace VeeamFileHasher
                         if(i == listActiveThreads.Length || listLazyThreads.Count == 0)
                             break;
                         
-                        if (bypassDictionary[listActiveThreads[i]] !=  2)
+                        if (_bypassDictionary[listActiveThreads[i]] != 2)
                         {
-                            if (bypassDictionary[listActiveThreads[i]] == 3)
+                            if (_bypassDictionary[listActiveThreads[i]] == 3)
                             {
-                                var countRead = i < blockCounts - 1 ? blockSize : lastBlockSize;
+                                var countRead = listActiveThreads[i] < blockCounts - 1 ? blockSize : lastBlockSize;
                                 listLazyThreads.Add(new KeyValuePair<Thread, FileBlockServiceRequest>(
-                                    new Thread(new FileBlockService(bypassDictionary).FileBlockCalcHash), 
+                                    new Thread(new FileBlockService(_bypassDictionary).FileBlockCalcHash), 
                                     new FileBlockServiceRequest
                                     {
-                                        BlockNumber = i,
+                                        BlockNumber = listActiveThreads[i],
                                         SizeBlock = countRead,
                                         StartByte = prevBlockPosition,
                                         FilePath = filePath
                                     } ));
                             }
+
+                            _bypassDictionary.TryUpdate(listActiveThreads[i], 0, 3);
                             
                             i++;
                             continue;
@@ -101,7 +106,7 @@ namespace VeeamFileHasher
                 
                 while (true)
                 {
-                    if(bypassDictionary.Values.Any(v => v == 0 || v == 1))
+                    if(_bypassDictionary.Values.Any(v => v == 0 || v == 1))
                         continue;
                     
                     break;
