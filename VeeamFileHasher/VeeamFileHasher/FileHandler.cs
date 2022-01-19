@@ -7,6 +7,7 @@ namespace VeeamFileHasher
 {
     public class FileHandler
     {
+        private readonly Dictionary<long, int> bypassDictionary = new Dictionary<long, int>(); // 0 - Init, 1 - Start, 2 Complete, 3 error
         public void CalcHashForFileBlocks(string filePath, long blockSize)
         {
             try
@@ -22,15 +23,16 @@ namespace VeeamFileHasher
 
                 var getOptimalThreadsCount = CheckOptimalCountThreads(blockSize, fileSize);
                 var d = GC.GetTotalMemory(true);
-                var listActiveThreads = new List<Thread>();
+                var listActiveThreads = new long[getOptimalThreadsCount];
                 var listLazyThreads = new List<KeyValuePair<Thread, FileBlockServiceRequest>>();
                 long prevBlockPosition = 0;
                 for (var i = 0; i < blockCounts; i++)
                 {
+                    bypassDictionary.Add(i, 0);
                     var countRead = i < blockCounts - 1 ? blockSize : lastBlockSize;
                     if (i < getOptimalThreadsCount)
                     {
-                        var newThread = new Thread(new FileBlockService().FileBlockCalcHash);
+                        var newThread = new Thread( new FileBlockService(bypassDictionary).FileBlockCalcHash);
                         newThread.Start(new FileBlockServiceRequest
                         {
                             BlockNumber = i,
@@ -38,12 +40,13 @@ namespace VeeamFileHasher
                             StartByte = prevBlockPosition,
                             FilePath = filePath
                         });
-                        listActiveThreads.Add(newThread);
+
+                        listActiveThreads[i] = i;
                     }
                     else
                     {
                         listLazyThreads.Add(new KeyValuePair<Thread, FileBlockServiceRequest>(
-                            new Thread(new FileBlockService().FileBlockCalcHash), 
+                            new Thread(new FileBlockService(bypassDictionary).FileBlockCalcHash), 
                             new FileBlockServiceRequest
                             {
                                 BlockNumber = i,
@@ -64,33 +67,44 @@ namespace VeeamFileHasher
                     var i = 0;
                     while (true)
                     {
-                        if(i>= listActiveThreads.Count)
+                        if(i == listActiveThreads.Length || listLazyThreads.Count == 0)
                             break;
                         
-                        if (listActiveThreads[i].IsAlive)
+                        if (bypassDictionary[listActiveThreads[i]] !=  2)
                         {
+                            if (bypassDictionary[listActiveThreads[i]] == 3)
+                            {
+                                var countRead = i < blockCounts - 1 ? blockSize : lastBlockSize;
+                                listLazyThreads.Add(new KeyValuePair<Thread, FileBlockServiceRequest>(
+                                    new Thread(new FileBlockService(bypassDictionary).FileBlockCalcHash), 
+                                    new FileBlockServiceRequest
+                                    {
+                                        BlockNumber = i,
+                                        SizeBlock = countRead,
+                                        StartByte = prevBlockPosition,
+                                        FilePath = filePath
+                                    } ));
+                            }
+                            
                             i++;
                             continue;
                         }
-                        
-                        listActiveThreads.Remove(listActiveThreads[i]);
 
                         var (key, value) = listLazyThreads.First();
                         key.Start(value);
 
-                        listActiveThreads.Add(key);
-                            
+                        listActiveThreads[i] = value.BlockNumber;
+
                         listLazyThreads.RemoveAt(0);
                     }
                 }
                 
                 while (true)
                 {
-                    if (listActiveThreads.Count > 0 ||
-                        listActiveThreads.All(activeThread => activeThread.ThreadState == ThreadState.Stopped))
-                    {
-                        break;
-                    }
+                    if(bypassDictionary.Values.Any(v => v == 0 || v == 1))
+                        continue;
+                    
+                    break;
                 }
             }
             catch (Exception e)

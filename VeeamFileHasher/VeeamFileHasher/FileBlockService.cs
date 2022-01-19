@@ -8,16 +8,21 @@ namespace VeeamFileHasher
 {
     public class FileBlockService
     {
-        // public FileBlockService(ref byte[] array)
-        // {
-        //     
-        // }
+        private readonly Dictionary<long, int> _bypassDictionary;
+        private long _blockNumber;
+        public FileBlockService(Dictionary<long, int> bypassDictionary)
+        {
+            _bypassDictionary = bypassDictionary;
+        }
+        
         public async void FileBlockCalcHash(object request)
         {
             try
             {
                 var requestUnboxing = (FileBlockServiceRequest)request;
-
+                _blockNumber = requestUnboxing.BlockNumber;
+                _bypassDictionary[requestUnboxing.BlockNumber] = 1;
+                
                 var d = GC.GetTotalMemory(true);
                 var blockFileBytes = new List<byte>();
                 var sizeBlock = requestUnboxing.SizeBlock;
@@ -61,9 +66,12 @@ namespace VeeamFileHasher
                 }
                 
                 Console.WriteLine($"Block № : {requestUnboxing.BlockNumber} , sha256 = {sb}");
+                
+                _bypassDictionary[requestUnboxing.BlockNumber] = 2;
             }
             catch (Exception e)
             {
+                _bypassDictionary[_blockNumber] = 3;
                 Console.WriteLine(e);
             }
             finally

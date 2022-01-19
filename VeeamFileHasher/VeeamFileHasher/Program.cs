@@ -22,7 +22,7 @@ namespace VeeamFileHasher
                 var sizeBlocksStr = Console.ReadLine();
                 if (!long.TryParse(sizeBlocksStr, out var blocksSizeInByte)) 
                     throw new Exception("Cant Parse size block");
-            
+
                 new FileHandler().CalcHashForFileBlocks(filePath, blocksSizeInByte);
 //#endif
             }
