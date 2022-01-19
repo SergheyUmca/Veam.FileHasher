@@ -1,39 +1,28 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Security.Cryptography;
 using System.Text;
-using System.Threading;
 
 namespace VeeamFileHasher
 {
     public class FileBlockService
     {
-        public  async void FileBlockCalcHash(object request)
+        // public FileBlockService(ref byte[] array)
+        // {
+        //     
+        // }
+        public async void FileBlockCalcHash(object request)
         {
             try
             {
                 var requestUnboxing = (FileBlockServiceRequest)request;
-                
-                byte[] blockFileBytes = { };
-                byte[] bufferForRead = { };
-                var sizeBlock = requestUnboxing.EndByte - requestUnboxing.StartByte;
-                var notEnoughMemory = true;
-                
-                while (notEnoughMemory)
-                {
-                    try
-                    {
-                        blockFileBytes = new byte[sizeBlock];
-                        bufferForRead = sizeBlock > int.MaxValue ? new byte[int.MaxValue] : new byte[sizeBlock];
-                        
-                        notEnoughMemory = false;
-                    }
-                    catch (Exception)
-                    {
-                        Thread.Sleep(1);
-                    }
-                }
 
+                var d = GC.GetTotalMemory(true);
+                var blockFileBytes = new List<byte>();
+                var sizeBlock = requestUnboxing.SizeBlock;
+                
+                var d2 = GC.GetTotalMemory(true);
                 await using (var fs = new FileStream(requestUnboxing.FilePath, FileMode.Open, FileAccess.Read)) 
                 {
                     fs.Position = requestUnboxing.StartByte;
@@ -44,31 +33,31 @@ namespace VeeamFileHasher
                         if (sizeBlock - actualRead > int.MaxValue)
                             countRead = int.MaxValue;
                         else
-                        {
                             countRead = (int)(sizeBlock - actualRead);
-                            //bufferForRead = new byte[countRead];
-                        }
 
+                        var bufferForRead = new byte[countRead];
                         var currentRead = fs.Read(bufferForRead, actualRead, countRead);
+                        if(currentRead == 0)
+                            break;
 
-                        var j = 0;
-                        for (var i = actualRead; i < countRead; i++)
-                        {
-                            blockFileBytes[i] = bufferForRead[j];
-                            j++;
-                        }
+                        blockFileBytes.AddRange(bufferForRead);
 
                         actualRead += currentRead;
                     }
+                    
+                    fs.Flush();
+                    fs.Close();
                 }
-
+                var d4 = GC.GetTotalMemory(true);
                 var sb = new StringBuilder();
                 // ReSharper disable once ConvertToUsingDeclaration
                 using (var hash = SHA256.Create())            
                 {
-                   var result = hash.ComputeHash(blockFileBytes);
+                   var result = hash.ComputeHash(blockFileBytes.ToArray());
                     foreach (var b in result)
                         sb.Append(b.ToString("x2"));
+                    
+                    blockFileBytes.Clear();
                 }
                 
                 Console.WriteLine($"Block № : {requestUnboxing.BlockNumber} , sha256 = {sb}");
@@ -76,9 +65,12 @@ namespace VeeamFileHasher
             catch (Exception e)
             {
                 Console.WriteLine(e);
-                throw;
             }
-            
+            finally
+            {
+                GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced);
+                var d3 = GC.GetTotalMemory(true);
+            }
         }
     }
 }

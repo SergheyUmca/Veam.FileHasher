@@ -6,7 +6,7 @@
         
         public long StartByte { get; set; } 
         
-        public long EndByte { get; set; } 
+        public long SizeBlock { get; set; } 
         
         public long BlockNumber { get; set; }
     }
