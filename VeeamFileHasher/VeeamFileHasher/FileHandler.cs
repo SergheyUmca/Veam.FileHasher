@@ -8,118 +8,111 @@ namespace VeeamFileHasher
 {
     public class FileHandler
     {
-        // 0 - Init, 1 - Start, 2 Complete, 3 error
-        private static readonly ConcurrentDictionary<long, int> BypassDictionary = new ConcurrentDictionary<long, int>(); 
+        private static readonly ConcurrentDictionary<long, ThreadStatus> BypassDictionary =
+            new ConcurrentDictionary<long, ThreadStatus>(); 
         
         public void CalcHashForFileBlocks(string filePath, long blockSize)
         {
-            try
-            {
-                var fileSize = new System.IO.FileInfo(filePath).Length;
+            var fileSize = new System.IO.FileInfo(filePath).Length;
                 
-                var blockCounts = fileSize / blockSize;
-                var lastBlockSize = fileSize % blockSize;
-                
-                // ReSharper disable once ConditionIsAlwaysTrueOrFalse
-                if (lastBlockSize > 0)
-                    blockCounts ++;
+            var blockCounts = fileSize / blockSize;
+            var lastBlockSize = fileSize % blockSize;
+            
+            // ReSharper disable once ConditionIsAlwaysTrueOrFalse
+            if (lastBlockSize > 0)
+                blockCounts ++;
 
-                var getOptimalThreadsCount = CheckOptimalCountThreads(blockSize, fileSize);
-                var d = GC.GetTotalMemory(true);
-                var listActiveThreads = new long[getOptimalThreadsCount];
-                var listLazyThreads = new List<KeyValuePair<Thread, FileBlockServiceRequest>>();
-                long prevBlockPosition = 0;
-                for (var i = 0; i < blockCounts; i++)
+            var getOptimalThreadsCount = CheckOptimalCountThreads(blockSize, fileSize);
+            
+            var listActiveThreads = new long[getOptimalThreadsCount];
+            var listLazyThreads = new List<KeyValuePair<Thread, FileBlockServiceRequest>>();
+            long prevBlockPosition = 0;
+            for (var i = 0; i < blockCounts; i++)
+            {
+                BypassDictionary.TryAdd(i, 0);
+                var countRead = i < blockCounts - 1 ? blockSize : lastBlockSize;
+                if (i < getOptimalThreadsCount)
                 {
-                    BypassDictionary.TryAdd(i, 0);
-                    var countRead = i < blockCounts - 1 ? blockSize : lastBlockSize;
-                    if (i < getOptimalThreadsCount)
+                    var newThread = new Thread( new FileBlockService(BypassDictionary).FileBlockCalcHash);
+                    newThread.Start(new FileBlockServiceRequest
                     {
-                        var newThread = new Thread( new FileBlockService(BypassDictionary).FileBlockCalcHash);
-                        newThread.Start(new FileBlockServiceRequest
+                        BlockNumber = i,
+                        SizeBlock = countRead,
+                        StartByte = prevBlockPosition,
+                        FilePath = filePath
+                    });
+
+                    listActiveThreads[i] = i;
+                }
+                else
+                {
+                    listLazyThreads.Add(new KeyValuePair<Thread, FileBlockServiceRequest>(
+                        new Thread(new FileBlockService(BypassDictionary).FileBlockCalcHash), 
+                        new FileBlockServiceRequest
                         {
                             BlockNumber = i,
                             SizeBlock = countRead,
                             StartByte = prevBlockPosition,
                             FilePath = filePath
-                        });
-
-                        listActiveThreads[i] = i;
-                    }
-                    else
-                    {
-                        listLazyThreads.Add(new KeyValuePair<Thread, FileBlockServiceRequest>(
-                            new Thread(new FileBlockService(BypassDictionary).FileBlockCalcHash), 
-                            new FileBlockServiceRequest
-                            {
-                                BlockNumber = i,
-                                SizeBlock = countRead,
-                                StartByte = prevBlockPosition,
-                                FilePath = filePath
-                            } ));
-                    }
-
-                    prevBlockPosition += countRead;
+                        } ));
                 }
 
+                prevBlockPosition += countRead;
+            }
+
+            while (true)
+            {
+                if(listLazyThreads.Count == 0)
+                    break;
+                
+                var i = 0;
                 while (true)
                 {
-                    if(listLazyThreads.Count == 0)
+                    if(i == listActiveThreads.Length || listLazyThreads.Count == 0)
                         break;
                     
-                    var i = 0;
-                    while (true)
+                    if (BypassDictionary[listActiveThreads[i]] != ThreadStatus.COMPLETE)
                     {
-                        if(i == listActiveThreads.Length || listLazyThreads.Count == 0)
-                            break;
-                        
-                        if (BypassDictionary[listActiveThreads[i]] != 2)
+                        if (BypassDictionary[listActiveThreads[i]] == ThreadStatus.ERROR)
                         {
-                            if (BypassDictionary[listActiveThreads[i]] == 3)
-                            {
-                                var countRead = listActiveThreads[i] < blockCounts - 1 ? blockSize : lastBlockSize;
-                                listLazyThreads.Add(new KeyValuePair<Thread, FileBlockServiceRequest>(
-                                    new Thread(new FileBlockService(BypassDictionary).FileBlockCalcHash), 
-                                    new FileBlockServiceRequest
-                                    {
-                                        BlockNumber = listActiveThreads[i],
-                                        SizeBlock = countRead,
-                                        StartByte = prevBlockPosition,
-                                        FilePath = filePath
-                                    } ));
-                            }
-
-                            BypassDictionary.TryUpdate(listActiveThreads[i], 0, 3);
-                            
-                            i++;
-                            continue;
+                            var countRead = listActiveThreads[i] < blockCounts - 1 ? blockSize : lastBlockSize;
+                            listLazyThreads.Add(new KeyValuePair<Thread, FileBlockServiceRequest>(
+                                new Thread(new FileBlockService(BypassDictionary).FileBlockCalcHash), 
+                                new FileBlockServiceRequest
+                                {
+                                    BlockNumber = listActiveThreads[i],
+                                    SizeBlock = countRead,
+                                    StartByte = prevBlockPosition,
+                                    FilePath = filePath
+                                } ));
                         }
 
-                        var (key, value) = listLazyThreads.First();
-                        key.Start(value);
-
-                        listActiveThreads[i] = value.BlockNumber;
-
-                        listLazyThreads.RemoveAt(0);
-                    }
-                }
-                
-                while (true)
-                {
-                    if(BypassDictionary.Values.Any(v => v == 0 || v == 1))
+                        BypassDictionary.TryUpdate(listActiveThreads[i], ThreadStatus.INIT, ThreadStatus.ERROR);
+                        
+                        i++;
                         continue;
-                    
-                    break;
+                    }
+
+                    var (key, value) = listLazyThreads.First();
+                    key.Start(value);
+
+                    listActiveThreads[i] = value.BlockNumber;
+
+                    listLazyThreads.RemoveAt(0);
                 }
             }
-            catch (Exception e)
+            
+            while (true)
             {
-                Console.WriteLine(e);
+                if(BypassDictionary.Values.Any(v => v == ThreadStatus.START))
+                    continue;
+                
+                break;
             }
         }
 
 
-        public long CheckOptimalCountThreads(long blockSize, long fileLength)
+        private long CheckOptimalCountThreads(long blockSize, long fileLength)
         {
             try
             {
@@ -130,8 +123,7 @@ namespace VeeamFileHasher
                 if (lastBlockSize > 0)
                     blockCounts++;
 
-                var t = GC.GetTotalMemory(false);
-                
+                // ReSharper disable once CollectionNeverQueried.Local
                 var listForLoadMemory = new List<byte[]>();
                 for (var i = 0; i < blockCounts; i++)
                 {
@@ -150,20 +142,12 @@ namespace VeeamFileHasher
                     }
                 }
                 listForLoadMemory.Clear();
-                var d = GC.GetTotalMemory(false);
-                var sum = d - t;
-                
+
                 return blockCounts;
-            }
-            catch (Exception e)
-            {
-                Console.WriteLine(e);
-                throw;
             }
             finally
             {
                 GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced);
-                var d = GC.GetTotalMemory(true);
             }
         }
     }

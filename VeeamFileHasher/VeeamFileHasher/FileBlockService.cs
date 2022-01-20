@@ -9,9 +9,10 @@ namespace VeeamFileHasher
 {
     public class FileBlockService
     {
-        private readonly ConcurrentDictionary<long, int> _bypassDictionary;
+        private readonly ConcurrentDictionary<long, ThreadStatus> _bypassDictionary;
         private long _blockNumber;
-        public FileBlockService(ConcurrentDictionary<long, int> bypassDictionary)
+        
+        public FileBlockService(ConcurrentDictionary<long, ThreadStatus> bypassDictionary)
         {
             _bypassDictionary = bypassDictionary;
         }
@@ -22,13 +23,11 @@ namespace VeeamFileHasher
             {
                 var requestUnboxing = (FileBlockServiceRequest)request;
                 _blockNumber = requestUnboxing.BlockNumber;
-                _bypassDictionary.TryUpdate(requestUnboxing.BlockNumber, 1, 0);
+                _bypassDictionary.TryUpdate(requestUnboxing.BlockNumber, ThreadStatus.START, ThreadStatus.INIT);
                 
-                var d = GC.GetTotalMemory(true);
                 var blockFileBytes = new List<byte>();
                 var sizeBlock = requestUnboxing.SizeBlock;
                 
-                var d2 = GC.GetTotalMemory(true);
                 await using (var fs = new FileStream(requestUnboxing.FilePath, FileMode.Open, FileAccess.Read)) 
                 {
                     try
@@ -59,7 +58,7 @@ namespace VeeamFileHasher
                         fs.Close();
                     }
                 }
-                var d4 = GC.GetTotalMemory(true);
+                
                 var sb = new StringBuilder();
                 // ReSharper disable once ConvertToUsingDeclaration
                 using (var hash = SHA256.Create())            
@@ -73,17 +72,16 @@ namespace VeeamFileHasher
                 
                 Console.WriteLine($"Block № : {requestUnboxing.BlockNumber} , sha256 = {sb}");
                 
-                _bypassDictionary.TryUpdate(requestUnboxing.BlockNumber, 2, 1);
+                _bypassDictionary.TryUpdate(requestUnboxing.BlockNumber, ThreadStatus.COMPLETE, ThreadStatus.START);
             }
             catch (Exception e)
             {
-                _bypassDictionary.TryUpdate(_blockNumber, 3, 1);
+                _bypassDictionary.TryUpdate(_blockNumber, ThreadStatus.ERROR, ThreadStatus.START);
                 Console.WriteLine(e);
             }
             finally
             {
                 GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced);
-                var d3 = GC.GetTotalMemory(true);
             }
         }
     }
