@@ -1,0 +1,13 @@
+C:\home\TestWorks\Veeam\VeeamFileHasher\VeeamFileHasher\bin\Debug\netcoreapp3.1\VeeamFileHasher.exe
+C:\home\TestWorks\Veeam\VeeamFileHasher\VeeamFileHasher\bin\Debug\netcoreapp3.1\VeeamFileHasher.deps.json
+C:\home\TestWorks\Veeam\VeeamFileHasher\VeeamFileHasher\bin\Debug\netcoreapp3.1\VeeamFileHasher.runtimeconfig.json
+C:\home\TestWorks\Veeam\VeeamFileHasher\VeeamFileHasher\bin\Debug\netcoreapp3.1\VeeamFileHasher.runtimeconfig.dev.json
+C:\home\TestWorks\Veeam\VeeamFileHasher\VeeamFileHasher\bin\Debug\netcoreapp3.1\VeeamFileHasher.dll
+C:\home\TestWorks\Veeam\VeeamFileHasher\VeeamFileHasher\bin\Debug\netcoreapp3.1\VeeamFileHasher.pdb
+C:\home\TestWorks\Veeam\VeeamFileHasher\VeeamFileHasher\obj\Debug\netcoreapp3.1\VeeamFileHasher.csprojAssemblyReference.cache
+C:\home\TestWorks\Veeam\VeeamFileHasher\VeeamFileHasher\obj\Debug\netcoreapp3.1\VeeamFileHasher.AssemblyInfoInputs.cache
+C:\home\TestWorks\Veeam\VeeamFileHasher\VeeamFileHasher\obj\Debug\netcoreapp3.1\VeeamFileHasher.AssemblyInfo.cs
+C:\home\TestWorks\Veeam\VeeamFileHasher\VeeamFileHasher\obj\Debug\netcoreapp3.1\VeeamFileHasher.csproj.CoreCompileInputs.cache
+C:\home\TestWorks\Veeam\VeeamFileHasher\VeeamFileHasher\obj\Debug\netcoreapp3.1\VeeamFileHasher.dll
+C:\home\TestWorks\Veeam\VeeamFileHasher\VeeamFileHasher\obj\Debug\netcoreapp3.1\VeeamFileHasher.pdb
+C:\home\TestWorks\Veeam\VeeamFileHasher\VeeamFileHasher\obj\Debug\netcoreapp3.1\VeeamFileHasher.genruntimeconfig.cache
