@@ -9,7 +9,7 @@ namespace VeeamFileHasher
     public class FileHandler
     {
         // 0 - Init, 1 - Start, 2 Complete, 3 error
-        private readonly ConcurrentDictionary<long, int> _bypassDictionary = new ConcurrentDictionary<long, int>(); 
+        private static readonly ConcurrentDictionary<long, int> BypassDictionary = new ConcurrentDictionary<long, int>(); 
         
         public void CalcHashForFileBlocks(string filePath, long blockSize)
         {
@@ -31,11 +31,11 @@ namespace VeeamFileHasher
                 long prevBlockPosition = 0;
                 for (var i = 0; i < blockCounts; i++)
                 {
-                    _bypassDictionary.TryAdd(i, 0);
+                    BypassDictionary.TryAdd(i, 0);
                     var countRead = i < blockCounts - 1 ? blockSize : lastBlockSize;
                     if (i < getOptimalThreadsCount)
                     {
-                        var newThread = new Thread( new FileBlockService(_bypassDictionary).FileBlockCalcHash);
+                        var newThread = new Thread( new FileBlockService(BypassDictionary).FileBlockCalcHash);
                         newThread.Start(new FileBlockServiceRequest
                         {
                             BlockNumber = i,
@@ -49,7 +49,7 @@ namespace VeeamFileHasher
                     else
                     {
                         listLazyThreads.Add(new KeyValuePair<Thread, FileBlockServiceRequest>(
-                            new Thread(new FileBlockService(_bypassDictionary).FileBlockCalcHash), 
+                            new Thread(new FileBlockService(BypassDictionary).FileBlockCalcHash), 
                             new FileBlockServiceRequest
                             {
                                 BlockNumber = i,
@@ -73,13 +73,13 @@ namespace VeeamFileHasher
                         if(i == listActiveThreads.Length || listLazyThreads.Count == 0)
                             break;
                         
-                        if (_bypassDictionary[listActiveThreads[i]] != 2)
+                        if (BypassDictionary[listActiveThreads[i]] != 2)
                         {
-                            if (_bypassDictionary[listActiveThreads[i]] == 3)
+                            if (BypassDictionary[listActiveThreads[i]] == 3)
                             {
                                 var countRead = listActiveThreads[i] < blockCounts - 1 ? blockSize : lastBlockSize;
                                 listLazyThreads.Add(new KeyValuePair<Thread, FileBlockServiceRequest>(
-                                    new Thread(new FileBlockService(_bypassDictionary).FileBlockCalcHash), 
+                                    new Thread(new FileBlockService(BypassDictionary).FileBlockCalcHash), 
                                     new FileBlockServiceRequest
                                     {
                                         BlockNumber = listActiveThreads[i],
@@ -89,7 +89,7 @@ namespace VeeamFileHasher
                                     } ));
                             }
 
-                            _bypassDictionary.TryUpdate(listActiveThreads[i], 0, 3);
+                            BypassDictionary.TryUpdate(listActiveThreads[i], 0, 3);
                             
                             i++;
                             continue;
@@ -106,7 +106,7 @@ namespace VeeamFileHasher
                 
                 while (true)
                 {
-                    if(_bypassDictionary.Values.Any(v => v == 0 || v == 1))
+                    if(BypassDictionary.Values.Any(v => v == 0 || v == 1))
                         continue;
                     
                     break;
